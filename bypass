@@ -27,7 +27,6 @@ for _, value in ipairs(objects) do
             if mt == nil then
                 candidates[value] = {Slot = slot, Identified = false, Shared = false}
             elseif type(mt) == "table" and type(rawget(mt, "__newindex")) == "function" then
-                warn("Overflow: rejoin without the old bypass first.")
                 return
             end
         end
