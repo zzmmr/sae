@@ -1,0 +1,98 @@
+-- Use a fresh session without the old bypass. Kick prevention remains unverified.
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+local environment = getgenv and getgenv() or _G
+if environment.OverflowNarrowBypass then return end
+local objects = getgc(true)
+local candidates = {}
+
+local function candidateSlot(value)
+    local recursive = false
+    local slot
+    for _, item in next, value do
+        if item == value then recursive = true end
+        if type(item) == "number" and item >= 1 and item <= 3 and item % 1 == 0 then
+            if slot and slot ~= item then return nil end
+            slot = item
+        end
+    end
+    if recursive and slot and rawget(value, slot) == nil then return slot end
+end
+
+for _, value in ipairs(objects) do
+    if type(value) == "table" then
+        local slot = candidateSlot(value)
+        if slot then
+            local mt = getrawmetatable(value)
+            if mt == nil then
+                candidates[value] = {Slot = slot, Identified = false, Shared = false}
+            elseif type(mt) == "table" and type(rawget(mt, "__newindex")) == "function" then
+                warn("Overflow: rejoin without the old bypass first.")
+                return
+            end
+        end
+    end
+end
+
+for _, callback in ipairs(objects) do
+    if type(callback) == "function" and islclosure(callback) then
+        local ok, upvalues = pcall(debug.getupvalues, callback)
+        if ok then
+            local referenced = {}
+            for _, value in pairs(upvalues) do
+                if type(value) == "table" and candidates[value] then referenced[value] = true end
+            end
+            if next(referenced) then
+                local source = debug.info(callback, "s")
+                local identified = false
+                if source == "ReplicatedFirst.LocalScript" then
+                    local success, constants = pcall(debug.getconstants, callback)
+                    if success then
+                        for _, value in pairs(constants) do
+                            if value == "X-16" then identified = true break end
+                        end
+                    end
+                end
+                for value in pairs(referenced) do
+                    local candidate = candidates[value]
+                    if identified then candidate.Identified = true
+                    else candidate.Shared = true end
+                end
+            end
+        end
+    end
+end
+
+local selected = {}
+for value, candidate in pairs(candidates) do
+    if candidate.Identified and not candidate.Shared then selected[value] = candidate end
+end
+if not next(selected) then return end
+
+local changes = {}
+local function restore()
+    for value, installed in pairs(changes) do
+        if getrawmetatable(value) == installed then setmetatable(value, nil) end
+    end
+    table.clear(changes)
+    environment.OverflowNarrowBypass = nil
+end
+local ok, err = pcall(function()
+    for value, candidate in pairs(selected) do
+        if getrawmetatable(value) ~= nil or rawget(value, candidate.Slot) ~= nil then
+            error("Selected table changed during inspection")
+        end
+        local slot = candidate.Slot
+        local mt = {__newindex = function(self, key, newValue)
+            if key ~= slot then rawset(self, key, newValue) end
+        end}
+        setmetatable(value, mt)
+        changes[value] = mt
+    end
+end)
+if not ok then
+    restore()
+    warn("Overflow: narrowed bypass rolled back: " .. tostring(err))
+    return
+end
+environment.OverflowNarrowBypass = {Restore = restore}
