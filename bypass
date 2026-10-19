@@ -1,4 +1,4 @@
--- Use a fresh session without the old bypass. Kick prevention remains unverified.
+
 if not game:IsLoaded() then game.Loaded:Wait() end
 
 local environment = getgenv and getgenv() or _G
@@ -92,7 +92,7 @@ local ok, err = pcall(function()
 end)
 if not ok then
     restore()
-    warn("Overflow: narrowed bypass rolled back: " .. tostring(err))
+    warn(tostring(err))
     return
 end
 environment.OverflowNarrowBypass = {Restore = restore}
